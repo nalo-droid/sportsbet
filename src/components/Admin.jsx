@@ -1,33 +1,64 @@
 import React, { useState, useEffect } from 'react';
-import { FaFutbol, FaPlus, FaCheck, FaPlay, FaTrash, FaCog } from 'react-icons/fa';
+import { FaFutbol, FaPlus, FaCheck, FaPlay, FaTrash, FaCog, FaStop } from 'react-icons/fa';
 import apiUrl from './apiUrl';
+import AdminBalanceSection from './AdminBalanceSection';
 
 const FOOTBALL_API_URL = 'https://api.football-data.org/v4';
+
+// Add these styles at the top of the component
+const styles = {
+  container: "min-h-screen bg-[#1a1b26] text-white p-4",
+  header: "flex items-center gap-3 mb-6",
+  title: "text-2xl font-bold",
+  section: "bg-[#2a2b36] rounded-lg p-6 mb-6",
+  sectionTitle: "text-xl font-bold mb-4",
+  input: "w-full p-3 bg-[#1a1b26] border border-gray-700 rounded-lg text-white mb-4",
+  button: "px-4 py-2 rounded-lg font-medium transition-colors",
+  card: "bg-[#2a2b36] rounded-lg p-4 mb-4",
+  cardHeader: "flex justify-between items-center mb-3",
+  cardTitle: "text-lg font-semibold",
+  cardStatus: "px-3 py-1 rounded-full text-sm",
+  statGrid: "grid grid-cols-2 gap-4 mt-4",
+  statCard: "bg-[#1a1b26] p-4 rounded-lg",
+  statLabel: "text-sm text-gray-400",
+  statValue: "text-xl font-bold text-green-400",
+  balanceForm: "bg-[#2a2b36] rounded-lg p-6 mb-6",
+};
 
 function Admin() {
   const [selectedMatches, setSelectedMatches] = useState([]);
   const [matchesFromAPI, setMatchesFromAPI] = useState([]);
   const [leagues, setLeagues] = useState([]);
   const [selectedLeague, setSelectedLeague] = useState('');
-  const [stakeAmount, setStakeAmount] = useState('');
   const [message, setMessage] = useState({ text: '', isError: false });
   const [existingMatches, setExistingMatches] = useState([]);
-  const [showStakeModal, setShowStakeModal] = useState(false);
   const [footballApiKey, setFootballApiKey] = useState('');
   const [selectedMatchForResult, setSelectedMatchForResult] = useState(null);
   const [homeScore, setHomeScore] = useState('');
   const [awayScore, setAwayScore] = useState('');
   const [matchDateTime, setMatchDateTime] = useState('');
-  const [showCustomMatchModal, setShowCustomMatchModal] = useState(false);
   const [customHomeTeam, setCustomHomeTeam] = useState('');
   const [customAwayTeam, setCustomAwayTeam] = useState('');
-  const [customStake, setCustomStake] = useState('');
   const [customMatchDateTime, setCustomMatchDateTime] = useState('');
+  const [showCustomMatchModal, setShowCustomMatchModal] = useState(false);
+  const [selectedTemplateForResult, setSelectedTemplateForResult] = useState(null);
+  const [deletionConfirm, setDeletionConfirm] = useState(null);
+  const [selectedUser, setSelectedUser] = useState('');
+  const [topUpAmount, setTopUpAmount] = useState('');
+  const [users, setUsers] = useState([]);
+  const [houseProfits, setHouseProfits] = useState({
+    totalCommission: 0,
+    totalMatches: 0,
+    matchDetails: []
+  });
+  const [showProfitDetails, setShowProfitDetails] = useState(false);
 
   useEffect(() => {
     fetchFootballApiKey();
     fetchLeagues();
     fetchExistingMatches();
+    fetchUsers();
+    fetchHouseProfits();
   }, []);
 
   const fetchFootballApiKey = async () => {
@@ -62,11 +93,45 @@ function Admin() {
 
   const fetchExistingMatches = async () => {
     try {
-      const response = await fetch(`${apiUrl}/api/matches/list`);
-      const data = await response.json();
-      setExistingMatches(data);
+      const templatesResponse = await fetch(`${apiUrl}/api/matches/templates`);
+      const templates = await templatesResponse.json();
+      
+      // Fetch user game stats for each template
+      const templatesWithStats = await Promise.all(templates.map(async (template) => {
+        const statsResponse = await fetch(`${apiUrl}/api/admin/template-stats/${template._id}`);
+        const stats = await statsResponse.json();
+        return {
+          ...template,
+          stats
+        };
+      }));
+      
+      setExistingMatches(templatesWithStats);
     } catch (error) {
-      console.error('Error fetching existing matches:', error);
+      console.error('Error fetching templates:', error);
+      setMessage({ text: 'Failed to load templates', isError: true });
+    }
+  };
+
+  const fetchUsers = async () => {
+    try {
+      const response = await fetch(`${apiUrl}/api/admin/users`);
+      const data = await response.json();
+      setUsers(data);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      setMessage({ text: 'Failed to load users', isError: true });
+    }
+  };
+
+  const fetchHouseProfits = async () => {
+    try {
+      const response = await fetch(`${apiUrl}/api/admin/house-profits`);
+      const data = await response.json();
+      setHouseProfits(data);
+    } catch (error) {
+      console.error('Error fetching house profits:', error);
+      setMessage({ text: 'Failed to load house profits', isError: true });
     }
   };
 
@@ -85,31 +150,27 @@ function Admin() {
   };
 
   const createSelectedMatches = async () => {
-    if (!stakeAmount || isNaN(stakeAmount) || !matchDateTime) {
-      setMessage({ text: 'Please enter a valid stake amount and match date/time', isError: true });
-      return;
-    }
-
     try {
       const matchesToCreate = selectedMatches.map(match => ({
         homeTeam: match.homeTeam.name,
         awayTeam: match.awayTeam.name,
-        amount: stakeAmount,
-        matchDate: new Date(matchDateTime),
-        apiId: match.id
+        matchDate: new Date(match.utcDate),
+        apiId: match.id,
+        isTemplate: true
       }));
 
       const response = await fetch(`${apiUrl}/api/admin/create-matches`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({ matches: matchesToCreate })
       });
 
       const data = await response.json();
       if (response.ok) {
-        setMessage({ text: `${data.createdCount} matches created!`, isError: false });
+        setMessage({ text: `Successfully created ${data.createdCount} template matches`, isError: false });
         setSelectedMatches([]);
-        setShowStakeModal(false);
         fetchExistingMatches();
       } else {
         setMessage({ text: data.message || 'Error creating matches', isError: true });
@@ -120,6 +181,8 @@ function Admin() {
   };
 
   const handleStartGame = async (matchId) => {
+    const actualMatchId = matchId.startsWith('template_') ? matchId.replace('template_', '') : matchId;
+    
     try {
       const response = await fetch(`${apiUrl}/api/admin/updateStatus`, {
         method: 'PUT',
@@ -127,7 +190,7 @@ function Admin() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          matchId,
+          matchId: actualMatchId,
           status: 'inplay'
         })
       });
@@ -152,7 +215,11 @@ function Admin() {
 
       const data = await response.json();
       if (response.ok) {
-        setMessage({ text: 'Match deleted successfully', isError: false });
+        setMessage({ 
+          text: `Match deleted successfully. ${data.gamesDeleted} user games were affected and refunded.`, 
+          isError: false 
+        });
+        setDeletionConfirm(null);
         fetchExistingMatches();
       } else {
         setMessage({ text: data.message || 'Error deleting match', isError: true });
@@ -189,73 +256,255 @@ function Admin() {
     }
   };
 
+  const handleCustomMatchSubmit = async () => {
+    if (!customHomeTeam || !customAwayTeam || !customMatchDateTime) {
+      setMessage({ text: 'Please fill all required fields', isError: true });
+      return;
+    }
+
+    try {
+      const matchToCreate = {
+        homeTeam: customHomeTeam,
+        awayTeam: customAwayTeam,
+        matchDate: new Date(customMatchDateTime),
+        isTemplate: true
+      };
+
+      const response = await fetch(`${apiUrl}/api/admin/create-matches`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ matches: [matchToCreate] })
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        setMessage({ text: 'Custom match template created successfully', isError: false });
+        setShowCustomMatchModal(false);
+        setCustomHomeTeam('');
+        setCustomAwayTeam('');
+        setCustomMatchDateTime('');
+        fetchExistingMatches();
+      } else {
+        setMessage({ text: data.message || 'Error creating match', isError: true });
+      }
+    } catch (error) {
+      setMessage({ text: 'Failed to create match', isError: true });
+    }
+  };
+
+  const handleDeclareResults = async () => {
+    try {
+      const response = await fetch(`${apiUrl}/api/admin/declare-template-results`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          templateId: selectedTemplateForResult._id,
+          homeScore,
+          awayScore
+        })
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        setMessage({ text: 'Results declared and winnings distributed successfully', isError: false });
+        setSelectedTemplateForResult(null);
+        setHomeScore('');
+        setAwayScore('');
+        fetchExistingMatches();
+      } else {
+        setMessage({ text: data.message || 'Error declaring results', isError: true });
+      }
+    } catch (error) {
+      console.error('Failed to declare results:', error);
+      setMessage({ text: 'Failed to declare results', isError: true });
+    }
+  };
+
   return (
-    <div className="max-w-4xl mx-auto p-6">
-      <div className="flex items-center gap-3 mb-6">
-        <FaFutbol className="text-3xl text-blue-600" />
-        <h1 className="text-2xl font-bold">Select Matches from API</h1>
+    <div className={styles.container}>
+      <div className={styles.header}>
+        <FaFutbol className="text-3xl text-blue-500" />
+        <h1 className={styles.title}>Match Management</h1>
       </div>
 
-      <div className="mb-6 flex gap-4">
-        <select 
-          value={selectedLeague}
-          onChange={handleLeagueChange}
-          className="w-full p-2 rounded border border-gray-300"
-        >
-          <option value="">Select a League</option>
-          {leagues.map(league => (
-            <option key={league.id} value={league.id}>
-              {league.name}
-            </option>
-          ))}
-        </select>
-        <button
-          onClick={() => setShowCustomMatchModal(true)}
-          className="whitespace-nowrap px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-        >
-          <FaPlus className="inline mr-2" />
-          Add Custom Match
-        </button>
-      </div>
+      <div className={styles.section}>
+        <h2 className={styles.sectionTitle}>House Profits</h2>
+        <div className={styles.statGrid}>
+          <div className={styles.statCard}>
+            <div className={styles.statLabel}>Total Commission</div>
+            <div className={styles.statValue}>
+              {houseProfits.totalCommission.toFixed(2)} ETB
+            </div>
+          </div>
+          <div className={styles.statCard}>
+            <div className={styles.statLabel}>Completed Matches</div>
+            <div className={styles.statValue}>{houseProfits.totalMatches}</div>
+          </div>
+        </div>
 
-      <div className="grid grid-cols-1 gap-4 mb-6">
-        {matchesFromAPI.map(match => {
-          const isExisting = existingMatches.some(m => m.apiId === match.id);
-          const isSelected = selectedMatches.some(m => m.id === match.id);
-          
-          return (
-            <div 
-              key={match.id}
-              className={`p-4 border rounded-md ${isSelected ? 'bg-blue-50' : 'bg-white'} 
-                ${isExisting ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-              onClick={() => !isExisting && toggleMatchSelection(match)}
+        <div className="mt-4">
+          <button
+            onClick={() => setShowProfitDetails(!showProfitDetails)}
+            className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
+          >
+            <span className="text-sm font-medium">
+              {showProfitDetails ? 'Hide' : 'Show'} Recent Profit Details
+            </span>
+            <svg
+              className={`w-4 h-4 transform transition-transform ${
+                showProfitDetails ? 'rotate-180' : ''
+              }`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
             >
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">
-                    {match.homeTeam.name} vs {match.awayTeam.name}
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    {new Date(match.utcDate).toLocaleString('en-US', {
-                      timeZone: 'UTC',
-                      year: 'numeric',
-                      month: 'short',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      timeZoneName: 'short'
-                    })}
-                  </p>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 9l-7 7-7-7"
+              />
+            </svg>
+          </button>
+
+          {showProfitDetails && (
+            <div className="mt-4 space-y-4">
+              {houseProfits.matchDetails.slice(0, 5).map((match, index) => (
+                <div key={match.matchId} className={styles.card}>
+                  <div className={styles.cardHeader}>
+                    <div>
+                      <div className={styles.cardTitle}>{match.teams}</div>
+                      <div className="text-sm text-gray-400">
+                        {new Date(match.date).toLocaleString()}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg font-bold text-green-400">
+                        +{match.commission.toFixed(2)} ETB
+                      </div>
+                      <div className="text-sm text-gray-400">
+                        Pool: {match.totalPool.toFixed(2)} ETB
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                {isExisting ? (
-                  <span className="text-green-600">Already added</span>
-                ) : (
-                  <FaCheck className={`text-xl ${isSelected ? 'text-blue-600' : 'text-gray-300'}`} />
-                )}
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <AdminBalanceSection users={users} setMessage={setMessage} />
+
+      <div className={styles.section}>
+        <h2 className={styles.sectionTitle}>Create Match Template</h2>
+        <div className="flex gap-4 flex-wrap">
+          <select 
+            value={selectedLeague}
+            onChange={handleLeagueChange}
+            className={styles.input}
+          >
+            <option value="">Select a League</option>
+            {leagues.map(league => (
+              <option key={league.id} value={league.id}>
+                {league.name}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => setShowCustomMatchModal(true)}
+            className={`${styles.button} bg-green-600 hover:bg-green-700 text-white`}
+          >
+            <FaPlus className="inline mr-2" />
+            Add Custom Match
+          </button>
+        </div>
+
+        <div className="mt-6">
+          {matchesFromAPI.map(match => {
+            const isExisting = existingMatches.some(m => m.apiId === match.id);
+            const isSelected = selectedMatches.some(m => m.id === match.id);
+            
+            return (
+              <div 
+                key={match.id}
+                className={`${styles.card} ${
+                  isSelected ? 'border-2 border-blue-500' : ''
+                } ${isExisting ? 'opacity-50' : 'cursor-pointer'}`}
+                onClick={() => !isExisting && toggleMatchSelection(match)}
+              >
+                <div className={styles.cardHeader}>
+                  <div>
+                    <div className={styles.cardTitle}>
+                      {match.homeTeam.name} vs {match.awayTeam.name}
+                    </div>
+                    <div className="text-sm text-gray-400">
+                      {new Date(match.utcDate).toLocaleString()}
+                    </div>
+                  </div>
+                  {isExisting ? (
+                    <span className="text-green-500">Added</span>
+                  ) : (
+                    <FaCheck className={`text-xl ${
+                      isSelected ? 'text-blue-500' : 'text-gray-600'
+                    }`} />
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className={styles.section}>
+        <h2 className={styles.sectionTitle}>Active Templates</h2>
+        {existingMatches.map(template => (
+          <div key={template._id} className={styles.card}>
+            <div className={styles.cardHeader}>
+              <div>
+                <div className={styles.cardTitle}>
+                  {template.homeTeam} vs {template.awayTeam}
+                </div>
+                <div className="text-sm text-gray-400">
+                  {new Date(template.matchDate).toLocaleString()}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setSelectedTemplateForResult(template)}
+                  className={`${styles.button} bg-orange-600 hover:bg-orange-700`}
+                  title="Declare Results"
+                >
+                  <FaStop />
+                </button>
+                <button
+                  onClick={() => setDeletionConfirm(template)}
+                  className={`${styles.button} bg-red-600 hover:bg-red-700`}
+                  title="Delete Template"
+                >
+                  <FaTrash />
+                </button>
               </div>
             </div>
-          );
-        })}
+
+            <div className={styles.statGrid}>
+              <div className={styles.statCard}>
+                <div className={styles.statLabel}>Active Games</div>
+                <div className={styles.statValue}>{template.stats?.activeGames || 0}</div>
+              </div>
+              <div className={styles.statCard}>
+                <div className={styles.statLabel}>Total Users</div>
+                <div className={styles.statValue}>{template.stats?.totalUsers || 0}</div>
+              </div>
+              <div className={styles.statCard}>
+                <div className={styles.statLabel}>Total Stakes</div>
+                <div className={styles.statValue}>
+                  {template.stats?.totalStakes ? `${template.stats.totalStakes.toFixed(2)} ETB` : 'N/A'}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
 
       {selectedMatches.length > 0 && (
@@ -264,10 +513,10 @@ function Admin() {
             <div>
               {selectedMatches.length} matches selected
               <button 
-                onClick={() => setShowStakeModal(true)}
+                onClick={createSelectedMatches}
                 className="ml-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
               >
-                Set Stake Amount
+                Create Templates
               </button>
             </div>
             <button
@@ -276,42 +525,6 @@ function Admin() {
             >
               Clear Selection
             </button>
-          </div>
-        </div>
-      )}
-
-      {showStakeModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-          <div className="bg-white p-6 rounded-lg w-96">
-            <h3 className="text-xl font-bold mb-4">Set Stake Amount and Match Date/Time</h3>
-            <input
-              type="number"
-              value={stakeAmount}
-              onChange={(e) => setStakeAmount(e.target.value)}
-              className="w-full p-2 border rounded mb-4"
-              placeholder="Enter stake amount in ETB"
-            />
-            <input
-              type="datetime-local"
-              value={matchDateTime}
-              onChange={(e) => setMatchDateTime(e.target.value)}
-              className="w-full p-2 border rounded mb-4"
-              placeholder="Select match date and time"
-            />
-            <div className="flex gap-2">
-              <button
-                onClick={createSelectedMatches}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-              >
-                Confirm
-              </button>
-              <button
-                onClick={() => setShowStakeModal(false)}
-                className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
-              >
-                Cancel
-              </button>
-            </div>
           </div>
         </div>
       )}
@@ -335,13 +548,6 @@ function Admin() {
               className="w-full p-2 border rounded mb-4"
             />
             <input
-              type="number"
-              value={customStake}
-              onChange={(e) => setCustomStake(e.target.value)}
-              placeholder="Stake Amount"
-              className="w-full p-2 border rounded mb-4"
-            />
-            <input
               type="datetime-local"
               value={customMatchDateTime}
               onChange={(e) => setCustomMatchDateTime(e.target.value)}
@@ -349,45 +555,10 @@ function Admin() {
             />
             <div className="flex gap-2">
               <button
-                onClick={async () => {
-                  if (!customHomeTeam || !customAwayTeam || !customStake || isNaN(customStake) || !customMatchDateTime) {
-                    setMessage({ text: 'Please fill all fields correctly', isError: true });
-                    return;
-                  }
-
-                  try {
-                    const matchToCreate = {
-                      homeTeam: customHomeTeam,
-                      awayTeam: customAwayTeam,
-                      amount: customStake,
-                      matchDate: new Date(customMatchDateTime)
-                    };
-
-                    const response = await fetch(`${apiUrl}/api/admin/create-matches`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ matches: [matchToCreate] })
-                    });
-
-                    const data = await response.json();
-                    if (response.ok) {
-                      setMessage({ text: 'Custom match created!', isError: false });
-                      setShowCustomMatchModal(false);
-                      fetchExistingMatches();
-                      setCustomHomeTeam('');
-                      setCustomAwayTeam('');
-                      setCustomStake('');
-                      setCustomMatchDateTime('');
-                    } else {
-                      setMessage({ text: data.message || 'Error creating match', isError: true });
-                    }
-                  } catch (error) {
-                    setMessage({ text: 'Failed to create match', isError: true });
-                  }
-                }}
+                onClick={handleCustomMatchSubmit}
                 className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
               >
-                Create Match
+                Create Template Match
               </button>
               <button
                 onClick={() => setShowCustomMatchModal(false)}
@@ -400,58 +571,13 @@ function Admin() {
         </div>
       )}
 
-      <div className="mt-6">
-        <h2 className="text-xl font-bold mb-4">Existing Matches</h2>
-        <div className="grid grid-cols-1 gap-4">
-          {existingMatches.map(match => (
-            <div key={match._id} className="p-4 border rounded-md bg-white">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">
-                    {match.homeTeam} vs {match.awayTeam}
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    {new Date(match.matchDate).toLocaleString('en-US', {
-                      timeZone: 'UTC',
-                      year: 'numeric',
-                      month: 'short',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      timeZoneName: 'short'
-                    })}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleStartGame(match._id)}
-                    className="px-2 py-1 bg-green-500 text-white rounded hover:bg-green-600"
-                  >
-                    <FaPlay />
-                  </button>
-                  <button
-                    onClick={() => setSelectedMatchForResult(match)}
-                    className="px-2 py-1 bg-purple-500 text-white rounded hover:bg-purple-600"
-                  >
-                    Declare Winner
-                  </button>
-                  <button
-                    onClick={() => handleDeleteMatch(match._id)}
-                    className="px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600"
-                  >
-                    <FaTrash />
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {selectedMatchForResult && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+      {selectedTemplateForResult && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-lg w-96">
-            <h3 className="text-xl font-bold mb-4">Declare Match Result</h3>
+            <h3 className="text-xl font-bold mb-4">Declare Match Results</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              {selectedTemplateForResult.homeTeam} vs {selectedTemplateForResult.awayTeam}
+            </p>
             <div className="flex gap-4 mb-4">
               <input
                 type="number"
@@ -470,13 +596,41 @@ function Admin() {
             </div>
             <div className="flex gap-2">
               <button
-                onClick={declareWinner}
+                onClick={handleDeclareResults}
                 className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
               >
-                Submit Result
+                Submit Results
               </button>
               <button
-                onClick={() => setSelectedMatchForResult(null)}
+                onClick={() => setSelectedTemplateForResult(null)}
+                className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deletionConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg w-96">
+            <h3 className="text-xl font-bold mb-4">Confirm Deletion</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Are you sure you want to delete the match between {deletionConfirm.homeTeam} and {deletionConfirm.awayTeam}?
+            </p>
+            <p className="text-sm text-red-600 mb-4">
+              This will delete all user games created from this template and refund their bets.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleDeleteMatch(deletionConfirm._id)}
+                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+              >
+                Delete
+              </button>
+              <button
+                onClick={() => setDeletionConfirm(null)}
                 className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
               >
                 Cancel

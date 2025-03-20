@@ -5,6 +5,29 @@ import useUserProfile from '../hooks/useUserProfile';
 import AllBets from './AllBets';
 import MyTransactions from './Mytransactions';
 
+// Add these styles at the top of the component
+const styles = {
+  container: "min-h-screen bg-[#1a1b26] text-white",
+  header: "bg-[#1a1b26] border-b border-gray-800 p-4",
+  userInfo: "flex items-center gap-2 mb-4 p-4",
+  userAvatar: "w-12 h-12 rounded-full bg-[#2a2b36] flex items-center justify-center text-xl font-bold",
+  userName: "text-lg font-semibold",
+  userBalance: "text-green-400 text-sm",
+  tabContainer: "flex overflow-x-auto p-2 gap-2 border-b border-gray-800",
+  tab: "px-4 py-2 rounded-full whitespace-nowrap text-sm font-medium",
+  activeTab: "bg-[#3b82f6] text-white",
+  inactiveTab: "bg-[#2a2b36] text-gray-400",
+  matchCard: "bg-[#2a2b36] rounded-lg p-4 mb-4",
+  matchHeader: "flex justify-between items-center mb-3",
+  matchTeams: "text-lg font-semibold",
+  matchStatus: "text-sm px-3 py-1 rounded-full",
+  betButton: "w-full py-2 rounded-lg text-center text-sm font-medium transition-colors",
+  betAmount: "text-xl font-bold text-yellow-400 mb-1",
+  betLabel: "text-sm text-gray-400",
+  betTypeLabel: "text-xs text-gray-400 mb-1",
+  betButtonDisabled: "bg-gray-700 text-gray-500 cursor-not-allowed",
+};
+
 const SportsBetting = () => {
   const [error, setError] = useState(null);
   const [bets, setBets] = useState([]);
@@ -21,6 +44,10 @@ const SportsBetting = () => {
   const [historicData, setHistoricData] = useState(null);
   const [historicDataLoading, setHistoricDataLoading] = useState(false);
   const [historicDataError, setHistoricDataError] = useState(null);
+  const [templateMatches, setTemplateMatches] = useState([]);
+  const [userGames, setUserGames] = useState([]);
+  const [templateMatchesLoading, setTemplateMatchesLoading] = useState(true);
+  const [userGamesLoading, setUserGamesLoading] = useState(true);
 
   useEffect(() => {
     const fetchBets = async () => {
@@ -38,12 +65,55 @@ const SportsBetting = () => {
     fetchBets();
   }, []);
 
+  useEffect(() => {
+    const fetchTemplateMatches = async () => {
+      try {
+        const response = await fetch(`${apiUrl}/api/matches/templates`);
+        const data = await response.json();
+        setTemplateMatches(data);
+      } catch (error) {
+        console.error('Error fetching template matches:', error);
+        setError('Failed to load template matches');
+      } finally {
+        setTemplateMatchesLoading(false);
+      }
+    };
+
+    const fetchUserGames = async () => {
+      try {
+        const response = await fetch(`${apiUrl}/api/matches/user-games`);
+        const data = await response.json();
+        
+        // Filter out games whose templates have been deleted
+        const validGames = await Promise.all(
+          data.map(async (game) => {
+            if (!game.originalTemplate) return game;
+            const templateExists = await checkTemplateExists(game.originalTemplate);
+            return templateExists ? game : null;
+          })
+        );
+
+        const filteredGames = validGames.filter(game => game !== null);
+        setUserGames(filteredGames);
+        setBets(filteredGames);
+      } catch (error) {
+        console.error('Error fetching user games:', error);
+        setError('Failed to load user games');
+      } finally {
+        setUserGamesLoading(false);
+        setLoading(false);
+      }
+    };
+
+    fetchTemplateMatches();
+    fetchUserGames();
+  }, []);
+
   // Helper function to calculate totals and counts for each bet type
   const calculateTotalsAndCounts = (bets = [], matchAmount) => {
     const result = bets.reduce((acc, bet) => {
       const betType = bet.betType;
       acc.userCounts[betType] = (acc.userCounts[betType] || 0) + 1;
-      // Calculate total amount for each bet type by multiplying count by match amount
       acc.totals[betType] = acc.userCounts[betType] * matchAmount;
       return acc;
     }, {
@@ -51,8 +121,9 @@ const SportsBetting = () => {
       userCounts: { home: 0, draw: 0, away: 0 }
     });
 
-    // Calculate total pool by summing all bet type totals
+    // Calculate total pool and winning amount after house commission
     result.totalPool = Object.values(result.totals).reduce((sum, amount) => sum + amount, 0);
+    result.winningAmount = (result.totalPool * 0.9); // 90% of total pool (after 10% house commission)
     
     return result;
   };
@@ -207,175 +278,288 @@ const SportsBetting = () => {
     }
   };
 
-  // Filter bets to only show user's bets in "My Bets" tab
-  const userBets = bets.filter(bet => 
-    bet.bets?.some(userBet => userBet.userId._id === user?._id)
-  );
+  // Update the filtering logic for active games
+  const activeGames = userGames.filter(match => {
+    const userBet = match.bets?.find(b => b.userId._id === user?._id);
+    const isFull = match.bets.length >= 2;
+    
+    // Show game if:
+    // 1. Game is not full (less than 2 bets), or
+    // 2. Game is full but user has a bet in it
+    return !isFull || userBet;
+  });
+
+  // Update the filtering logic for user's bets
+  const userBets = userGames.filter(match => {
+    const userBet = match.bets?.find(b => b.userId._id === user?._id);
+    return userBet;
+  });
+
+  const handleCreateGame = async (matchId) => {
+    if (!user?._id) {
+      alert('Please login to create a game');
+      return;
+    }
+
+    const stakeAmount = prompt('Enter stake amount (ETB):', '10');
+    if (!stakeAmount || isNaN(stakeAmount) || Number(stakeAmount) <= 0) {
+      alert('Please enter a valid stake amount');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${apiUrl}/api/bets/create-game`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          templateMatchId: matchId,
+          userId: user._id,
+          stakeAmount: Number(stakeAmount)
+        })
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        alert('Game created successfully!');
+        window.location.reload(); // Reload the page
+      } else {
+        alert(data.error || 'Failed to create game');
+      }
+    } catch (error) {
+      console.error('Error creating game:', error);
+      alert('An error occurred while creating the game');
+    }
+  };
+
+  // Update the tabs array to include a new tab for templates
+  const tabs = [
+    { id: 'events', label: 'Active Games' },
+    { id: 'templates', label: 'Create New Game' },
+    { id: 'mybets', label: 'My Bets' }
+  ];
+
+  // Add this function to check if a game's template still exists
+  const checkTemplateExists = async (templateId) => {
+    try {
+      const response = await fetch(`${apiUrl}/api/matches/template/${templateId}`);
+      return response.ok;
+    } catch (error) {
+      console.error('Error checking template:', error);
+      return false;
+    }
+  };
 
   return (
-    <div>
-      <Header />
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 text-white p-4">
-        {/* Tab Navigation */}
-        <div className="flex gap-4 mb-6 justify-center">
-          <button 
-            className={`px-4 py-2 rounded-lg ${activeTab === 'events' ? 'bg-blue-600 text-white' : 'bg-gray-700'}`}
-            onClick={() => setActiveTab('events')}
-          >
-            Events
-          </button>
-          <button 
-            className={`px-4 py-2 rounded-lg ${activeTab === 'bets' ? 'bg-blue-600 text-white' : 'bg-gray-700'}`}
-            onClick={() => setActiveTab('bets')}
-          >
-            My Bets
-          </button>
-          <button 
-            className={`px-4 py-2 rounded-lg ${activeTab === 'transactions' ? 'bg-blue-600 text-white' : 'bg-gray-700'}`}
-            onClick={() => setActiveTab('transactions')}
-          >
-            Transactions
-          </button>
+    <div className={styles.container}>
+      <div className={styles.header}>
+        <div className={styles.userInfo}>
+          <div className={styles.userAvatar}>
+            {user?.username?.charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <div className={styles.userName}>{user?.username}</div>
+            <div className={styles.userBalance}>{user?.balance} ETB</div>
+          </div>
         </div>
 
-        {activeTab === 'events' && (
-          <div className="flex flex-col lg:flex-row space-y-4 lg:space-y-0 lg:space-x-4">
-            {/* Main Betting Section */}
-            <div className="w-full lg:w-3/5 bg-gray-800 rounded-lg shadow-lg border border-gray-700 flex flex-col">
-              <h3 className="text-xl lg:text-2xl font-bold p-4 lg:p-6 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-600 border-b border-gray-700">Active Bets</h3>
-              <div className="overflow-y-auto flex-grow p-4 lg:p-6 custom-scrollbar space-y-4 lg:space-y-6">
-                {bets && bets.length > 0 ? (
-                  bets.map(match => {
-                    const { totals, userCounts, totalPool } = calculateTotalsAndCounts(match.bets, match.amount);
-                    const userBet = match.bets?.find(b => b.userId._id === user?._id);
+        <div className={styles.tabContainer}>
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`${styles.tab} ${
+                activeTab === tab.id ? styles.activeTab : styles.inactiveTab
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
-                    return (
-                      <div key={match._id} className="bg-gray-700 rounded-lg p-3 lg:p-6 shadow-md hover:shadow-lg transition-shadow duration-300 border border-gray-600">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="text-lg font-medium text-blue-300">
-                            {match.homeTeam} vs {match.awayTeam}
-                          </div>
-                          <span className={`px-2 py-1 rounded text-sm ${
-                            match.status === 'completed' ? 'bg-green-600' :
-                            match.status === 'inplay' ? 'bg-yellow-600' :
-                            'bg-gray-600'
-                          }`}>
-                            {match.status?.toUpperCase()}
-                          </span>
-                        </div>
-                        {/* Add date display */}
-                        <div className="text-sm text-gray-400 mb-2">
-                          Match Date: {match.matchDate ? new Date(match.matchDate).toLocaleString('en-US', {
-                            timeZone: 'UTC',
-                            year: 'numeric',
-                            month: 'short',
-                            day: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            timeZoneName: 'short'
-                          }) : 'Date not available'}
-                        </div>
-
-                        {/* Total Pool Display */}
-                        <div className="text-center p-2 bg-gray-800 rounded-t-lg text-sm">
-                          <span className="text-purple-400 font-semibold">Total Pool: </span>
-                          <span className="text-gray-300">{totalPool} ETB</span>
-                        </div>
-                        <div className="text-center p-2 bg-gray-800 rounded-t-lg text-sm">
-                          <span className="text-purple-400 font-semibold">Stake Amount: </span>
-                          <span className="text-gray-300">{match.amount} ETB</span>
-                        </div>
-
-                        {/* Betting options */}
-                        <div className="grid grid-cols-3 gap-2 lg:gap-4 p-2 lg:p-3 bg-gray-800 rounded-b-lg text-sm">
-                          {['home', 'draw', 'away'].map(betType => (
-                            <button
-                              key={`${match._id}-${betType}`}
-                              onClick={() => handleBetClick(betType, match._id)}
-                              disabled={userBet !== undefined || match.status !== 'active'}
-                              className={`text-center p-2 hover:bg-gray-700 rounded transition-colors ${
-                                userBet?.betType === betType ? 'bg-blue-900' : ''
-                              } ${match.status !== 'active' ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            >
-                              <div className="text-blue-400 font-semibold">
-                                {betType.charAt(0).toUpperCase() + betType.slice(1)}
-                              </div>
-                              <div className="text-gray-300">{totals[betType]} ETB</div>
-                              <div className="text-xs text-gray-400">
-                                {userCounts[betType]} {userCounts[betType] === 1 ? 'bet' : 'bets'}
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-
-                        {/* AI Analysis button */}
-                        <button
-                          onClick={() => logMatchDetails(match)}
-                          className="mt-3 w-full py-2 px-4 bg-gray-800 hover:bg-gray-900 rounded-lg text-sm text-blue-400 transition-colors"
-                        >
-                          AI Analysis
-                        </button>
-
-                        {match.status === 'completed' && (
-                          <div className="mt-2 p-2 bg-gray-800 rounded">
-                            <div className="text-center text-lg font-bold">
-                              {match.scoreHome} - {match.scoreAway}
-                            </div>
-                            <div className="text-center text-sm text-gray-400">
-                              Winner: {match.winnerTeam}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })
-                ) : (
-                  <p className="text-gray-400 text-sm">No bets available.</p>
-                )}
+      <div className="p-4">
+        {activeTab === 'templates' && (
+          <div>
+            {templateMatches.map(match => (
+              <div key={match._id} className={styles.matchCard}>
+                <div className={styles.matchHeader}>
+                  <div className={styles.matchTeams}>
+                    {match.homeTeam} vs {match.awayTeam}
+                  </div>
+                </div>
+                <div className="mb-4 text-gray-400 text-sm">
+                  {new Date(match.matchDate).toLocaleString()}
+                </div>
+                <button
+                  onClick={() => handleCreateGame(match._id)}
+                  className="w-full bg-[#3b82f6] hover:bg-blue-600 text-white py-3 rounded-lg font-medium"
+                >
+                  Create Game
+                </button>
               </div>
-            </div>
+            ))}
           </div>
         )}
 
-        {activeTab === 'transactions' && <MyTransactions />}
-        {activeTab === 'bets' && (
-          <div className="w-full lg:w-2/5 bg-gray-800 rounded-lg shadow-lg border border-gray-700 flex flex-col">
-            <h3 className="text-xl lg:text-2xl font-bold p-4 lg:p-6 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-600 border-b border-gray-700">Your Betslips</h3>
-            <div className="overflow-y-auto flex-grow p-4 lg:p-6 custom-scrollbar space-y-4">
-              {userBets.map(bet => {
-                const userBet = bet.bets.find(b => b.userId._id === user?._id);
-                if (!userBet) return null;
+        {activeTab === 'events' && (
+          <div>
+            {activeGames.map(match => {
+              const { totals, userCounts } = calculateTotalsAndCounts(match.bets, match.amount);
+              const userBet = match.bets?.find(b => b.userId._id === user?._id);
+              const takenBetTypes = match.bets.map(b => b.betType);
 
-                const { totals, userCounts, totalPool } = calculateTotalsAndCounts(bet.bets || [], bet.amount);
-
-                return (
-                  <div key={bet._id} className="bg-gray-700 rounded-lg p-4 shadow-md border border-gray-600">
-                    <div className="text-sm font-medium mb-2 text-blue-300">
-                      {bet.homeTeam} vs {bet.awayTeam}
+              return (
+                <div key={match._id} className={styles.matchCard}>
+                  <div className={styles.matchHeader}>
+                    <div className={styles.matchTeams}>
+                      {match.homeTeam} vs {match.awayTeam}
                     </div>
-                    <div className="bg-gray-800 rounded-lg p-3 text-sm border-l-4 border-blue-500">
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="text-gray-400">
-                          Bet: {userBet.betType} ({userBet.amount} ETB)
-                        </div>
-                        <div className="text-green-400">
-                          Win: {calculatePossibleWin(userBet.betType, bet.amount, totals, userCounts, totalPool)} ETB
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => handleCancelBet(bet._id)}
-                        className={`mt-2 w-full py-1 px-2 rounded text-white text-xs transition-colors ${
-                          bet.status === 'inplay' ? 'bg-gray-500 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600'
-                        }`}
-                        disabled={bet.status === 'inplay'}
-                      >
-                        Cancel Bet
-                      </button>
+                    <div className={`${styles.matchStatus} ${
+                      match.status === 'active' ? 'bg-green-600' : 'bg-gray-600'
+                    }`}>
+                      {match.status}
                     </div>
                   </div>
-                );
-              })}
-            </div>
+                  
+                  <div className={styles.betAmount}>{match.amount} ETB</div>
+                  <div className={styles.betLabel}>Stake Amount</div>
+
+                  <div className="grid grid-cols-3 gap-3 mt-4">
+                    {[
+                      { type: 'home', label: match.homeTeam },
+                      { type: 'draw', label: 'Draw' },
+                      { type: 'away', label: match.awayTeam }
+                    ].map(({ type, label }) => {
+                      const isDisabled = takenBetTypes.includes(type);
+                      const isUserBet = userBet?.betType === type;
+
+                      return (
+                        <div key={type} className="flex flex-col">
+                          <div className={styles.betTypeLabel}>{label}</div>
+                          <button
+                            onClick={() => !isDisabled && handleBetClick(type, match._id)}
+                            disabled={isDisabled && !isUserBet}
+                            className={`${styles.betButton} ${
+                              isUserBet
+                                ? 'bg-blue-600 text-white'
+                                : isDisabled
+                                ? styles.betButtonDisabled
+                                : 'bg-[#1a1b26] text-gray-400 hover:bg-[#2a2b36]'
+                            }`}
+                          >
+                            <div className="text-lg font-bold mb-1">
+                              {totals[type]} ETB
+                            </div>
+                            <div className="text-xs">
+                              {userCounts[type]} bets
+                            </div>
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+            {activeGames.length === 0 && (
+              <div className="text-center text-gray-400 mt-4">
+                No active games available
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'mybets' && (
+          <div>
+            {userBets.map(match => {
+              const userBet = match.bets?.find(b => b.userId._id === user?._id);
+              const { totals, userCounts, totalPool, winningAmount } = calculateTotalsAndCounts(match.bets, match.amount);
+              const potentialWin = userBet ? winningAmount / match.bets.filter(b => b.betType === userBet.betType).length : 0;
+              const isWinner = match.status === 'completed' && userBet?.betType === match.winnerTeam;
+              
+              return (
+                <div key={match._id} className={styles.matchCard}>
+                  <div className={styles.matchHeader}>
+                    <div className={styles.matchTeams}>
+                      {match.homeTeam} vs {match.awayTeam}
+                    </div>
+                    <div className={`${styles.matchStatus} ${
+                      match.status === 'completed' 
+                        ? isWinner ? 'bg-green-600' : 'bg-red-600'
+                        : match.status === 'active' ? 'bg-green-600' : 'bg-gray-600'
+                    }`}>
+                      {match.status}
+                    </div>
+                  </div>
+                  
+                  <div className="text-sm text-gray-400 mb-2">
+                    Your bet: {userBet?.betType === 'home' ? match.homeTeam : 
+                              userBet?.betType === 'away' ? match.awayTeam : 'Draw'}
+                  </div>
+                  
+                  <div className={styles.betAmount}>{match.amount} ETB</div>
+                  <div className={styles.betLabel}>Stake Amount</div>
+
+                  {/* Add match result information */}
+                  {match.status === 'completed' && (
+                    <div className="mt-2 mb-4">
+                      <div className="text-sm text-gray-400">
+                        Final Score: {match.scoreHome} - {match.scoreAway}
+                      </div>
+                      <div className={`text-lg font-bold ${isWinner ? 'text-green-400' : 'text-red-400'}`}>
+                        {isWinner ? (
+                          <>Won: {potentialWin.toFixed(2)} ETB</>
+                        ) : (
+                          <>Lost: {match.amount} ETB</>
+                        )}
+                      </div>
+                      <div className="text-sm text-gray-400">
+                        Winner: {match.winnerTeam === 'home' ? match.homeTeam :
+                                match.winnerTeam === 'away' ? match.awayTeam : 'Draw'}
+                      </div>
+                    </div>
+                  )}
+
+                  {match.status !== 'completed' && (
+                    <div className="mt-2 mb-4">
+                      <div className="text-lg font-bold text-green-400">
+                        Potential Win: {potentialWin.toFixed(2)} ETB
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-3 gap-3 mt-4">
+                    {[
+                      { type: 'home', label: match.homeTeam },
+                      { type: 'draw', label: 'Draw' },
+                      { type: 'away', label: match.awayTeam }
+                    ].map(({ type, label }) => (
+                      <div key={type} className="flex flex-col">
+                        <div className={styles.betTypeLabel}>{label}</div>
+                        <div className={`${styles.betButton} ${
+                          userBet?.betType === type ? 'bg-blue-600 text-white' : 'bg-gray-700'
+                        }`}>
+                          <div className="text-lg font-bold mb-1">
+                            {totals[type]} ETB
+                          </div>
+                          <div className="text-xs">
+                            {userCounts[type]} bets
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+            {userBets.length === 0 && (
+              <div className="text-center text-gray-400 mt-4">
+                You haven't placed any bets yet
+              </div>
+            )}
           </div>
         )}
       </div>
