@@ -26,6 +26,11 @@ const styles = {
   betLabel: "text-sm text-gray-400",
   betTypeLabel: "text-xs text-gray-400 mb-1",
   betButtonDisabled: "bg-gray-700 text-gray-500 cursor-not-allowed",
+  teamContainer: "flex items-center gap-2",
+  teamLogo: "w-6 h-6 object-contain rounded-full bg-white p-[2px]",
+  teamName: "text-sm sm:text-base truncate max-w-[120px] sm:max-w-[200px]",
+  matchTeamsContainer: "flex items-center justify-between gap-2 w-full",
+  vsText: "text-gray-400 text-sm px-2",
 };
 
 const SportsBetting = () => {
@@ -386,8 +391,34 @@ const SportsBetting = () => {
             {templateMatches.map(match => (
               <div key={match._id} className={styles.matchCard}>
                 <div className={styles.matchHeader}>
-                  <div className={styles.matchTeams}>
-                    {match.homeTeam} vs {match.awayTeam}
+                  <div className={styles.matchTeamsContainer}>
+                    <div className={styles.teamContainer}>
+                      {match.homeTeamLogo && (
+                        <img 
+                          src={match.homeTeamLogo} 
+                          alt={match.homeTeam}
+                          className={styles.teamLogo}
+                          onError={(e) => {
+                            e.target.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/46/Question_mark_%28black%29.svg/800px-Question_mark_%28black%29.svg.png';
+                          }}
+                        />
+                      )}
+                      <span className={styles.teamName}>{match.homeTeam}</span>
+                    </div>
+                    <span className={styles.vsText}>vs</span>
+                    <div className={styles.teamContainer}>
+                      {match.awayTeamLogo && (
+                        <img 
+                          src={match.awayTeamLogo} 
+                          alt={match.awayTeam}
+                          className={styles.teamLogo}
+                          onError={(e) => {
+                            e.target.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/46/Question_mark_%28black%29.svg/800px-Question_mark_%28black%29.svg.png';
+                          }}
+                        />
+                      )}
+                      <span className={styles.teamName}>{match.awayTeam}</span>
+                    </div>
                   </div>
                 </div>
                 <div className="mb-4 text-gray-400 text-sm">
@@ -414,8 +445,34 @@ const SportsBetting = () => {
               return (
                 <div key={match._id} className={styles.matchCard}>
                   <div className={styles.matchHeader}>
-                    <div className={styles.matchTeams}>
-                      {match.homeTeam} vs {match.awayTeam}
+                    <div className={styles.matchTeamsContainer}>
+                      <div className={styles.teamContainer}>
+                        {match.homeTeamLogo && (
+                          <img 
+                            src={match.homeTeamLogo} 
+                            alt={match.homeTeam}
+                            className={styles.teamLogo}
+                            onError={(e) => {
+                              e.target.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/46/Question_mark_%28black%29.svg/800px-Question_mark_%28black%29.svg.png';
+                            }}
+                          />
+                        )}
+                        <span className={styles.teamName}>{match.homeTeam}</span>
+                      </div>
+                      <span className={styles.vsText}>vs</span>
+                      <div className={styles.teamContainer}>
+                        {match.awayTeamLogo && (
+                          <img 
+                            src={match.awayTeamLogo} 
+                            alt={match.awayTeam}
+                            className={styles.teamLogo}
+                            onError={(e) => {
+                              e.target.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/46/Question_mark_%28black%29.svg/800px-Question_mark_%28black%29.svg.png';
+                            }}
+                          />
+                        )}
+                        <span className={styles.teamName}>{match.awayTeam}</span>
+                      </div>
                     </div>
                     <div className={`${styles.matchStatus} ${
                       match.status === 'active' ? 'bg-green-600' : 'bg-gray-600'
@@ -483,8 +540,34 @@ const SportsBetting = () => {
               return (
                 <div key={match._id} className={styles.matchCard}>
                   <div className={styles.matchHeader}>
-                    <div className={styles.matchTeams}>
-                      {match.homeTeam} vs {match.awayTeam}
+                    <div className={styles.matchTeamsContainer}>
+                      <div className={styles.teamContainer}>
+                        {match.homeTeamLogo && (
+                          <img 
+                            src={match.homeTeamLogo} 
+                            alt={match.homeTeam}
+                            className={styles.teamLogo}
+                            onError={(e) => {
+                              e.target.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/46/Question_mark_%28black%29.svg/800px-Question_mark_%28black%29.svg.png';
+                            }}
+                          />
+                        )}
+                        <span className={styles.teamName}>{match.homeTeam}</span>
+                      </div>
+                      <span className={styles.vsText}>vs</span>
+                      <div className={styles.teamContainer}>
+                        {match.awayTeamLogo && (
+                          <img 
+                            src={match.awayTeamLogo} 
+                            alt={match.awayTeam}
+                            className={styles.teamLogo}
+                            onError={(e) => {
+                              e.target.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/46/Question_mark_%28black%29.svg/800px-Question_mark_%28black%29.svg.png';
+                            }}
+                          />
+                        )}
+                        <span className={styles.teamName}>{match.awayTeam}</span>
+                      </div>
                     </div>
                     <div className={`${styles.matchStatus} ${
                       match.status === 'completed' 

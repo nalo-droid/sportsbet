@@ -1,29 +1,39 @@
 import React, { useState, useEffect } from 'react';
-import { FaFutbol, FaPlus, FaCheck, FaPlay, FaTrash, FaCog, FaStop } from 'react-icons/fa';
+import { FaFutbol, FaPlus, FaCheck, FaPlay, FaTrash, FaCog, FaStop, FaChartLine, FaList } from 'react-icons/fa';
 import apiUrl from './apiUrl';
 import AdminBalanceSection from './AdminBalanceSection';
 
 const FOOTBALL_API_URL = 'https://api.football-data.org/v4';
 
-// Add these styles at the top of the component
+// Update the styles object at the top
 const styles = {
-  container: "min-h-screen bg-[#1a1b26] text-white p-4",
-  header: "flex items-center gap-3 mb-6",
-  title: "text-2xl font-bold",
-  section: "bg-[#2a2b36] rounded-lg p-6 mb-6",
-  sectionTitle: "text-xl font-bold mb-4",
-  input: "w-full p-3 bg-[#1a1b26] border border-gray-700 rounded-lg text-white mb-4",
-  button: "px-4 py-2 rounded-lg font-medium transition-colors",
-  card: "bg-[#2a2b36] rounded-lg p-4 mb-4",
-  cardHeader: "flex justify-between items-center mb-3",
-  cardTitle: "text-lg font-semibold",
-  cardStatus: "px-3 py-1 rounded-full text-sm",
-  statGrid: "grid grid-cols-2 gap-4 mt-4",
-  statCard: "bg-[#1a1b26] p-4 rounded-lg",
-  statLabel: "text-sm text-gray-400",
-  statValue: "text-xl font-bold text-green-400",
-  balanceForm: "bg-[#2a2b36] rounded-lg p-6 mb-6",
+  container: "min-h-screen bg-gradient-to-b from-[#1a1b26] to-[#24273a] text-white p-4 sm:p-6",
+  header: "flex items-center gap-3 mb-8 bg-[#2a2b36] p-4 rounded-lg shadow-lg",
+  title: "text-xl sm:text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-600",
+  section: "bg-[#2a2b36] rounded-lg p-4 sm:p-6 mb-6 shadow-lg border border-gray-700/50",
+  sectionTitle: "text-lg sm:text-xl font-bold mb-4 flex items-center gap-2",
+  input: "w-full p-3 bg-[#1a1b26] border border-gray-700 rounded-lg text-white mb-4 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all",
+  button: "px-3 py-2 sm:px-4 sm:py-2 rounded-lg font-medium transition-all duration-200 flex items-center gap-2",
+  card: "bg-[#2a2b36] rounded-lg p-3 sm:p-4 mb-4 hover:shadow-xl transition-all duration-300 border border-gray-700/50",
+  cardHeader: "flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-3",
+  cardTitle: "text-sm sm:text-base font-semibold",
+  cardStatus: "px-2 py-1 rounded-full text-xs sm:text-sm",
+  statGrid: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4",
+  statCard: "bg-[#1a1b26] p-4 rounded-lg hover:shadow-lg transition-all duration-300 border border-gray-700/30",
+  statLabel: "text-xs sm:text-sm text-gray-400",
+  statValue: "text-base sm:text-lg font-bold text-green-400 mt-1",
+  teamContainer: "flex items-center gap-2 flex-shrink-0",
+  teamLogo: "w-6 h-6 sm:w-8 sm:h-8 object-contain",
+  teamName: "text-xs sm:text-sm truncate max-w-[100px] sm:max-w-[150px] lg:max-w-[200px]",
+  matchTeamsContainer: "flex items-center justify-between gap-2 w-full flex-wrap sm:flex-nowrap",
+  vsText: "text-gray-400 text-xs sm:text-sm px-2",
+  matchCard: "bg-[#2a2b36] rounded-lg p-3 sm:p-4 mb-4 hover:transform hover:scale-[1.01] transition-all duration-300",
+  actionButton: "text-xs sm:text-sm px-2 py-1 sm:px-3 sm:py-2 rounded-lg transition-colors duration-200",
 };
+
+// Add these new style classes for the floating action bar
+const floatingActionBar = "fixed bottom-0 left-0 right-0 bg-[#1a1b26] border-t border-gray-700 p-4 backdrop-blur-lg bg-opacity-90 z-50 transform transition-transform duration-300";
+const actionBarContent = "max-w-4xl mx-auto flex items-center justify-between gap-4";
 
 function Admin() {
   const [selectedMatches, setSelectedMatches] = useState([]);
@@ -85,7 +95,12 @@ function Admin() {
     try {
       const response = await fetch(`${apiUrl}/api/admin/fetch-matches/${leagueId}`);
       const data = await response.json();
-      setMatchesFromAPI(data.matches);
+      const matchesWithLogos = data.matches.map(match => ({
+        ...match,
+        homeTeamLogo: match.homeTeam.crest,
+        awayTeamLogo: match.awayTeam.crest
+      }));
+      setMatchesFromAPI(matchesWithLogos);
     } catch (error) {
       console.error('Error fetching matches:', error);
     }
@@ -151,32 +166,62 @@ function Admin() {
 
   const createSelectedMatches = async () => {
     try {
-      const matchesToCreate = selectedMatches.map(match => ({
-        homeTeam: match.homeTeam.name,
-        awayTeam: match.awayTeam.name,
-        matchDate: new Date(match.utcDate),
-        apiId: match.id,
-        isTemplate: true
-      }));
+      console.log('Raw selected matches:', JSON.stringify(selectedMatches, null, 2));
+
+      const matchesToCreate = selectedMatches.map(match => {
+        console.log('Processing match:', match);
+        console.log('Home team data:', match.homeTeam);
+        console.log('Away team data:', match.awayTeam);
+
+        // Ensure we're sending exactly what the server expects
+        const matchData = {
+          homeTeam: match.homeTeam.name || match.homeTeam,  // Handle both object and string cases
+          awayTeam: match.awayTeam.name || match.awayTeam,  // Handle both object and string cases
+          homeTeamLogo: match.homeTeam.crest || match.homeTeamLogo,  // Handle both object and string cases
+          awayTeamLogo: match.awayTeam.crest || match.awayTeamLogo,  // Handle both object and string cases
+          matchDate: match.utcDate || match.matchDate,  // Handle both cases
+          apiId: match.id,
+          isTemplate: true,
+          status: 'active'
+        };
+
+        // Validate required fields
+        if (!matchData.homeTeam || !matchData.awayTeam) {
+          throw new Error('Home team and away team are required');
+        }
+
+        console.log('Created match data:', matchData);
+        return matchData;
+      });
+
+      // Important: Send the data wrapped in a matches array
+      const requestData = { matches: matchesToCreate };
+      console.log('Sending request data:', JSON.stringify(requestData, null, 2));
 
       const response = await fetch(`${apiUrl}/api/admin/create-matches`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ matches: matchesToCreate })
+        body: JSON.stringify(requestData)
       });
 
       const data = await response.json();
+      console.log('Server response:', data);
+
       if (response.ok) {
         setMessage({ text: `Successfully created ${data.createdCount} template matches`, isError: false });
         setSelectedMatches([]);
         fetchExistingMatches();
       } else {
-        setMessage({ text: data.message || 'Error creating matches', isError: true });
+        setMessage({ 
+          text: data.error || data.message || 'Error creating matches', 
+          isError: true 
+        });
       }
     } catch (error) {
-      setMessage({ text: 'Failed to create matches', isError: true });
+      console.error('Error creating matches:', error);
+      setMessage({ text: error.message || 'Failed to create matches', isError: true });
     }
   };
 
@@ -323,12 +368,15 @@ function Admin() {
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <FaFutbol className="text-3xl text-blue-500" />
+        <FaFutbol className="text-2xl sm:text-3xl text-blue-500" />
         <h1 className={styles.title}>Match Management</h1>
       </div>
 
       <div className={styles.section}>
-        <h2 className={styles.sectionTitle}>House Profits</h2>
+        <h2 className={styles.sectionTitle}>
+          <FaChartLine className="text-green-400" />
+          House Profits
+        </h2>
         <div className={styles.statGrid}>
           <div className={styles.statCard}>
             <div className={styles.statLabel}>Total Commission</div>
@@ -397,12 +445,15 @@ function Admin() {
       <AdminBalanceSection users={users} setMessage={setMessage} />
 
       <div className={styles.section}>
-        <h2 className={styles.sectionTitle}>Create Match Template</h2>
-        <div className="flex gap-4 flex-wrap">
+        <h2 className={styles.sectionTitle}>
+          <FaPlus className="text-blue-400" />
+          Create Match Template
+        </h2>
+        <div className="flex flex-col sm:flex-row gap-4">
           <select 
             value={selectedLeague}
             onChange={handleLeagueChange}
-            className={styles.input}
+            className={`${styles.input} flex-grow`}
           >
             <option value="">Select a League</option>
             {leagues.map(league => (
@@ -413,14 +464,14 @@ function Admin() {
           </select>
           <button
             onClick={() => setShowCustomMatchModal(true)}
-            className={`${styles.button} bg-green-600 hover:bg-green-700 text-white`}
+            className={`${styles.button} bg-green-600 hover:bg-green-700 whitespace-nowrap`}
           >
-            <FaPlus className="inline mr-2" />
-            Add Custom Match
+            <FaPlus className="text-sm" />
+            <span>Custom Match</span>
           </button>
         </div>
 
-        <div className="mt-6">
+        <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {matchesFromAPI.map(match => {
             const isExisting = existingMatches.some(m => m.apiId === match.id);
             const isSelected = selectedMatches.some(m => m.id === match.id);
@@ -434,21 +485,34 @@ function Admin() {
                 onClick={() => !isExisting && toggleMatchSelection(match)}
               >
                 <div className={styles.cardHeader}>
-                  <div>
-                    <div className={styles.cardTitle}>
-                      {match.homeTeam.name} vs {match.awayTeam.name}
+                  <div className={styles.matchTeamsContainer}>
+                    <div className={styles.teamContainer}>
+                      {match.homeTeamLogo && (
+                        <img 
+                          src={match.homeTeamLogo} 
+                          alt={match.homeTeam.name}
+                          className={styles.teamLogo}
+                          onError={(e) => e.target.style.display = 'none'}
+                        />
+                      )}
+                      <span className={styles.teamName}>{match.homeTeam.name}</span>
                     </div>
-                    <div className="text-sm text-gray-400">
-                      {new Date(match.utcDate).toLocaleString()}
+                    <span className={styles.vsText}>vs</span>
+                    <div className={styles.teamContainer}>
+                      {match.awayTeamLogo && (
+                        <img 
+                          src={match.awayTeamLogo} 
+                          alt={match.awayTeam.name}
+                          className={styles.teamLogo}
+                          onError={(e) => e.target.style.display = 'none'}
+                        />
+                      )}
+                      <span className={styles.teamName}>{match.awayTeam.name}</span>
                     </div>
                   </div>
-                  {isExisting ? (
-                    <span className="text-green-500">Added</span>
-                  ) : (
-                    <FaCheck className={`text-xl ${
-                      isSelected ? 'text-blue-500' : 'text-gray-600'
-                    }`} />
-                  )}
+                </div>
+                <div className="text-xs sm:text-sm text-gray-400 mt-2">
+                  {new Date(match.utcDate).toLocaleString()}
                 </div>
               </div>
             );
@@ -457,81 +521,106 @@ function Admin() {
       </div>
 
       <div className={styles.section}>
-        <h2 className={styles.sectionTitle}>Active Templates</h2>
-        {existingMatches.map(template => (
-          <div key={template._id} className={styles.card}>
-            <div className={styles.cardHeader}>
-              <div>
-                <div className={styles.cardTitle}>
-                  {template.homeTeam} vs {template.awayTeam}
+        <h2 className={styles.sectionTitle}>
+          <FaList className="text-purple-400" />
+          Active Templates
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {existingMatches.map(template => (
+            <div key={template._id} className={styles.card}>
+              <div className={styles.cardHeader}>
+                <div className={styles.matchTeamsContainer}>
+                  <div className={styles.teamContainer}>
+                    {template.homeTeamLogo && (
+                      <img 
+                        src={template.homeTeamLogo} 
+                        alt={template.homeTeam}
+                        className={styles.teamLogo}
+                        onError={(e) => e.target.style.display = 'none'}
+                      />
+                    )}
+                    <span className={styles.teamName}>{template.homeTeam}</span>
+                  </div>
+                  <span className={styles.vsText}>vs</span>
+                  <div className={styles.teamContainer}>
+                    {template.awayTeamLogo && (
+                      <img 
+                        src={template.awayTeamLogo} 
+                        alt={template.awayTeam}
+                        className={styles.teamLogo}
+                        onError={(e) => e.target.style.display = 'none'}
+                      />
+                    )}
+                    <span className={styles.teamName}>{template.awayTeam}</span>
+                  </div>
                 </div>
-                <div className="text-sm text-gray-400">
-                  {new Date(template.matchDate).toLocaleString()}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setSelectedTemplateForResult(template)}
+                    className={`${styles.button} bg-orange-600 hover:bg-orange-700`}
+                    title="Declare Results"
+                  >
+                    <FaStop />
+                  </button>
+                  <button
+                    onClick={() => setDeletionConfirm(template)}
+                    className={`${styles.button} bg-red-600 hover:bg-red-700`}
+                    title="Delete Template"
+                  >
+                    <FaTrash />
+                  </button>
                 </div>
               </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setSelectedTemplateForResult(template)}
-                  className={`${styles.button} bg-orange-600 hover:bg-orange-700`}
-                  title="Declare Results"
-                >
-                  <FaStop />
-                </button>
-                <button
-                  onClick={() => setDeletionConfirm(template)}
-                  className={`${styles.button} bg-red-600 hover:bg-red-700`}
-                  title="Delete Template"
-                >
-                  <FaTrash />
-                </button>
-              </div>
-            </div>
 
-            <div className={styles.statGrid}>
-              <div className={styles.statCard}>
-                <div className={styles.statLabel}>Active Games</div>
-                <div className={styles.statValue}>{template.stats?.activeGames || 0}</div>
-              </div>
-              <div className={styles.statCard}>
-                <div className={styles.statLabel}>Total Users</div>
-                <div className={styles.statValue}>{template.stats?.totalUsers || 0}</div>
-              </div>
-              <div className={styles.statCard}>
-                <div className={styles.statLabel}>Total Stakes</div>
-                <div className={styles.statValue}>
-                  {template.stats?.totalStakes ? `${template.stats.totalStakes.toFixed(2)} ETB` : 'N/A'}
+              <div className={styles.statGrid}>
+                <div className={styles.statCard}>
+                  <div className={styles.statLabel}>Active Games</div>
+                  <div className={styles.statValue}>{template.stats?.activeGames || 0}</div>
+                </div>
+                <div className={styles.statCard}>
+                  <div className={styles.statLabel}>Total Users</div>
+                  <div className={styles.statValue}>{template.stats?.totalUsers || 0}</div>
+                </div>
+                <div className={styles.statCard}>
+                  <div className={styles.statLabel}>Total Stakes</div>
+                  <div className={styles.statValue}>
+                    {template.stats?.totalStakes ? `${template.stats.totalStakes.toFixed(2)} ETB` : 'N/A'}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
 
       {selectedMatches.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white p-4 shadow-lg">
-          <div className="max-w-4xl mx-auto flex items-center justify-between">
-            <div>
-              {selectedMatches.length} matches selected
+        <div className={floatingActionBar}>
+          <div className={actionBarContent}>
+            <div className="flex items-center gap-4">
+              <span className="text-sm sm:text-base">
+                {selectedMatches.length} matches selected
+              </span>
               <button 
                 onClick={createSelectedMatches}
-                className="ml-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                className={`${styles.button} bg-blue-600 hover:bg-blue-700`}
               >
-                Create Templates
+                <FaPlus className="text-sm" />
+                <span>Create Templates</span>
               </button>
             </div>
             <button
               onClick={() => setSelectedMatches([])}
-              className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
+              className={`${styles.button} bg-gray-600 hover:bg-gray-700`}
             >
-              Clear Selection
+              Clear
             </button>
           </div>
         </div>
       )}
 
       {showCustomMatchModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-          <div className="bg-white p-6 rounded-lg w-96">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-[#2a2b36] p-6 rounded-lg w-full max-w-md border border-gray-700/50">
             <h3 className="text-xl font-bold mb-4">Create Custom Match</h3>
             <input
               type="text"
